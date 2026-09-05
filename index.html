@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claim ₹500 Skin Clinic Voucher</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #f4f4f7;
+      color: #1a1a1a;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 16px;
+    }
+    .card {
+      background: #ffffff;
+      max-width: 480px;
+      width: 100%;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+      text-align: center;
+    }
+    h2 { font-size: 1.35rem; margin-bottom: 8px; color: #111; }
+    p { font-size: 0.95rem; color: #555; line-height: 1.5; margin-bottom: 16px; }
+    .status-box { padding: 16px; border-radius: 12px; margin-bottom: 16px; }
+    .loading { background: #eef2ff; color: #3730a3; }
+    .error { background: #fef2f2; color: #991b1b; }
+    .btn {
+      display: inline-block;
+      width: 100%;
+      padding: 14px;
+      background: #0f172a;
+      color: #ffffff;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: opacity 0.2s;
+    }
+    .btn:active { opacity: 0.85; }
+    canvas {
+      width: 100%;
+      height: auto;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      margin-bottom: 16px;
+    }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <!-- State 1: Verifying / Prompting -->
+  <div id="statusSection" class="status-box loading">
+    <h2 id="statusTitle">Checking Counter Location...</h2>
+    <p id="statusMsg">Please allow location access so we can verify you are in the shop.</p>
+    <button id="retryBtn" class="btn hidden" onclick="verifyLocation()">Allow Location</button>
+  </div>
+
+  <!-- State 2: Out of Range Warning -->
+  <div id="outOfRangeSection" class="status-box error hidden">
+    <h2>Out of Range</h2>
+    <p id="distanceMsg">You must be physically at the shop checkout counter to unlock this voucher.</p>
+    <button class="btn" onclick="verifyLocation()">Re-check Location</button>
+  </div>
+
+  <!-- State 3: Success Voucher Display -->
+  <div id="voucherSection" class="hidden">
+    <h2>Voucher Unlocked!</h2>
+    <p>Save this image and present it at The Skin Dermatics Clinic counter.</p>
+    <canvas id="voucherCanvas"></canvas>
+    <a id="downloadBtn" class="btn" download="Skin-Clinic-Voucher.png">Download Voucher</a>
+  </div>
+</div>
+
+<script>
+  // 1. CONFIGURATION: Set your shop's coordinates and range
+  const SHOP_LAT = 18.488828918368338;      
+  const SHOP_LNG = 73.93858788191687;
+  const MAX_DISTANCE_METERS = 75; // Allowable radius in meters
+//   const MAX_DISTANCE_METERS = 1000; // Allowable radius in meters
+  const IMAGE_PATH = 'voucher.jpg'; // Path to your base graphic
+  // Haversine Formula for distance in meters
+  function getDistanceInMeters(lat1, lon1, lat2, lon2) {
+    const R = 6371e3; // Earth radius in meters
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  function verifyLocation() {
+    const statusSection = document.getElementById('statusSection');
+    const outOfRangeSection = document.getElementById('outOfRangeSection');
+    const voucherSection = document.getElementById('voucherSection');
+    const retryBtn = document.getElementById('retryBtn');
+    const statusTitle = document.getElementById('statusTitle');
+    const statusMsg = document.getElementById('statusMsg');
+
+    // Reset states
+    statusSection.classList.remove('hidden', 'error');
+    statusSection.classList.add('loading');
+    outOfRangeSection.classList.add('hidden');
+    voucherSection.classList.add('hidden');
+    retryBtn.classList.add('hidden');
+    statusTitle.innerText = "Verifying Location...";
+    statusMsg.innerText = "Please ensure GPS is on and approve the browser prompt.";
+
+    if (!navigator.geolocation) {
+      showError("Geolocation is not supported by your browser.");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const userLat = position.coords.latitude;
+        const userLng = position.coords.longitude;
+        const distance = getDistanceInMeters(userLat, userLng, SHOP_LAT, SHOP_LNG);
+
+        if (distance <= MAX_DISTANCE_METERS) {
+          statusSection.classList.add('hidden');
+          renderVoucher();
+        } else {
+          statusSection.classList.add('hidden');
+          outOfRangeSection.classList.remove('hidden');
+          document.getElementById('distanceMsg').innerText = 
+            `You are approximately ${Math.round(distance)} meters away. You must be in-store to claim this offer.`;
+        }
+      },
+      (error) => {
+        let msg = "Location permission is required to verify you are at the shop.";
+        if (error.code === error.PERMISSION_DENIED) {
+          msg = "Permission was denied. Please tap the URL bar icon or browser settings to allow location access, then retry.";
+        }
+        showError(msg);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }
+
+  function showError(message) {
+    const statusSection = document.getElementById('statusSection');
+    const retryBtn = document.getElementById('retryBtn');
+    statusSection.classList.remove('loading');
+    statusSection.classList.add('error');
+    document.getElementById('statusTitle').innerText = "Location Required";
+    document.getElementById('statusMsg').innerText = message;
+    retryBtn.classList.remove('hidden');
+  }
+
+function renderVoucher() {
+    const canvas = document.getElementById('voucherCanvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    img.src = IMAGE_PATH;
+
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+
+      // Date calculations
+      const now = new Date();
+      const expiry = new Date();
+      expiry.setDate(now.getDate() + 28); // 4-week window
+
+      const formatDate = (d) => d.toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+      });
+
+      // Stamp text onto image
+      ctx.fillStyle = "#302527";
+      ctx.textAlign = "center";
+      ctx.font = "italic 600 25px Georgia, 'Times New Roman', serif";
+      ctx.shadowColor = "rgba(255, 255, 255, 0.85)";
+      ctx.shadowBlur = 3;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 1;
+      ctx.fillText(`Issued: ${formatDate(now)}`, canvas.width / 2, 52);
+
+      ctx.fillStyle = "#9b3f4d";
+      ctx.font = "bold 24px Georgia, 'Times New Roman', serif";
+      ctx.fillText(`Valid Till: ${formatDate(expiry)}`, canvas.width / 2, 86);
+
+      // Bind download button
+      const downloadBtn = document.getElementById('downloadBtn');
+      downloadBtn.href = canvas.toDataURL('image/png');
+
+      document.getElementById('voucherSection').classList.remove('hidden');
+    };
+  }
+
+  // Auto-run on page load
+  window.addEventListener('load', verifyLocation);
+</script>
+
+</body>
+</html>
